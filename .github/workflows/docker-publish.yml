@@ -9,7 +9,7 @@ on:
       ref:
         description: 'Git tag/ref to build'
         required: true
-        default: '1.9.1'
+        default: 'backport/confluent-kafka-v2-1.9.1'
 
 jobs:
   docker:
@@ -34,7 +34,10 @@ jobs:
 
       - name: Determine version
         id: vars
-        run: echo "version=${{ github.event.inputs.ref || github.ref_name }}" >> "$GITHUB_OUTPUT"
+        run: |
+          raw="${{ github.event.inputs.ref || github.ref_name }}"
+          safe=$(echo "$raw" | tr '/' '-')
+          echo "version=$safe" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v6
