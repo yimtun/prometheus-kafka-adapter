@@ -1,4 +1,4 @@
-FROM golang:1.20.6-alpine as build
+FROM golang:1.24-alpine as build
 WORKDIR /src/prometheus-kafka-adapter
 
 COPY go.mod go.sum vendor *.go ./
