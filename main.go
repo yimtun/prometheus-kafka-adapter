@@ -15,6 +15,8 @@
 package main
 
 import (
+	"net/http"
+	"os"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
@@ -87,5 +89,14 @@ func main() {
 		r.POST("/receive", receiveHandler(producer, serializer))
 	}
 
-	logrus.Fatal(r.Run())
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	server := &http.Server{
+		Addr:      ":" + port,
+		Handler:   r.Handler(),
+		ConnState: httpConnections.connState,
+	}
+	logrus.Fatal(server.ListenAndServe())
 }
