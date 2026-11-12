@@ -27,10 +27,21 @@ func TestHTTPConnectionStates(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := map[string]float64{"new": newCount, "active": active, "idle": idle}
-		for _, metric := range families[0].Metric {
-			state := metric.Label[0].GetValue()
-			if got := metric.Gauge.GetValue(); got != want[state] {
-				t.Fatalf("state %s: got %v, want %v", state, got, want[state])
+		got := map[string]float64{}
+		for _, family := range families {
+			for _, metric := range family.Metric {
+				var state string
+				for _, label := range metric.Label {
+					if label.GetName() == "state" {
+						state = label.GetValue()
+					}
+				}
+				got[state] += metric.Gauge.GetValue()
+			}
+		}
+		for state, count := range want {
+			if got[state] != count {
+				t.Fatalf("state %s: got %v, want %v", state, got[state], count)
 			}
 		}
 	}
@@ -118,5 +129,48 @@ func TestHTTPConnectionLifecycle(t *testing.T) {
 	defer m.mu.Unlock()
 	if len(m.states) != 0 {
 		t.Fatal("closed connection retained")
+	}
+}
+
+type clientConn struct {
+	net.Conn
+	addr net.Addr
+}
+
+func (c *clientConn) RemoteAddr() net.Addr { return c.addr }
+
+func TestHTTPConnectionClientIPs(t *testing.T) {
+	m := newHTTPConnectionMetrics()
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(m.connections)
+	a := &clientConn{addr: &net.TCPAddr{IP: net.ParseIP("10.27.19.55"), Port: 1234}}
+	b := &clientConn{addr: &net.TCPAddr{IP: net.ParseIP("10.27.19.55"), Port: 5678}}
+	c := &clientConn{addr: &net.TCPAddr{IP: net.ParseIP("2001:db8::1"), Port: 9999}}
+	m.connState(a, http.StateNew)
+	m.connState(a, http.StateIdle)
+	m.connState(b, http.StateNew)
+	m.connState(b, http.StateActive)
+	m.connState(c, http.StateNew)
+	m.connState(a, http.StateClosed)
+	families, err := registry.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]float64{}
+	for _, metric := range families[0].Metric {
+		labels := map[string]string{}
+		for _, label := range metric.Label {
+			labels[label.GetName()] = label.GetValue()
+		}
+		values[labels["client_ip"]+"/"+labels["state"]] = metric.Gauge.GetValue()
+	}
+	if len(values) != 6 || values["10.27.19.55/active"] != 1 || values["2001:db8::1/new"] != 1 {
+		t.Fatalf("unexpected per-IP counts: %v", values)
+	}
+	m.connState(b, http.StateClosed)
+	m.connState(c, http.StateHijacked)
+	families, err = registry.Gather()
+	if err != nil || len(families) != 0 || len(m.clients) != 0 || len(m.states) != 0 {
+		t.Fatalf("client series were not cleaned up: %v, %v", families, err)
 	}
 }

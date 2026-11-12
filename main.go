@@ -15,14 +15,11 @@
 package main
 
 import (
-	"net/http"
-	"os"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/gin-gonic/contrib/ginrus"
 	"github.com/gin-gonic/gin"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 )
 
@@ -78,8 +75,6 @@ func main() {
 
 	r.Use(ginrus.Ginrus(logrus.StandardLogger(), time.RFC3339, true), gin.Recovery())
 
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
-	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"status": "UP"}) })
 	if basicauth {
 		authorized := r.Group("/", gin.BasicAuth(gin.Accounts{
 			basicauthUsername: basicauthPassword,
@@ -89,14 +84,11 @@ func main() {
 		r.POST("/receive", receiveHandler(producer, serializer))
 	}
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	server := &http.Server{
-		Addr:      ":" + port,
-		Handler:   r.Handler(),
-		ConnState: httpConnections.connState,
-	}
+	server, monitoringServer := newHTTPServers(r.Handler(), httpConnections)
+	go func() {
+		logrus.WithField("address", monitoringServer.Addr).Info("starting metrics and health server")
+		logrus.Fatal(monitoringServer.ListenAndServe())
+	}()
+	logrus.WithField("address", server.Addr).Info("starting receive server")
 	logrus.Fatal(server.ListenAndServe())
 }
