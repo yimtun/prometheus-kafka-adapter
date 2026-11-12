@@ -1,0 +1,88 @@
+name: Build and Push Multi-Arch Image
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TCR_REGISTRY: ${{ vars.TCR_REGISTRY || 'krccr.ccs.tencentyun.com' }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      TCR_IMAGE: ${{ vars.TCR_IMAGE || 'yimtune/prometheus-kafka-adapter' }}
+    steps:
+      - name: Validate registry configuration
+        env:
+          TCR_USERNAME: ${{ secrets.TCR_USERNAME }}
+          TCR_PASSWORD: ${{ secrets.TCR_PASSWORD }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          for key in TCR_REGISTRY TCR_IMAGE TCR_USERNAME TCR_PASSWORD DOCKERHUB_USERNAME DOCKERHUB_TOKEN; do
+            if [ -z "${!key}" ]; then
+              echo "::error::Missing GitHub Actions variable or secret: $key"
+              exit 1
+            fi
+          done
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Tencent Cloud Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.TCR_REGISTRY }}
+          username: ${{ secrets.TCR_USERNAME }}
+          password: ${{ secrets.TCR_PASSWORD }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Determine image tags
+        id: tags
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          {
+            echo 'tags<<EOF'
+            for image in "${TCR_REGISTRY}/${TCR_IMAGE}" "docker.io/yimtune/prometheus-kafka-adapter"; do
+              echo "${image}:sha-${GITHUB_SHA}"
+              if [ "$GITHUB_REF_TYPE" = tag ]; then
+                echo "${image}:${GITHUB_REF_NAME}"
+              fi
+              if [ "$GITHUB_REF" = "refs/heads/${DEFAULT_BRANCH}" ]; then
+                echo "${image}:latest"
+              fi
+            done
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+          sbom: false
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
