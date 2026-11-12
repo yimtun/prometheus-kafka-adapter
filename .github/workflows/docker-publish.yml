@@ -16,7 +16,7 @@ jobs:
     env:
       TCR_REGISTRY: ${{ vars.TCR_REGISTRY || 'krccr.ccs.tencentyun.com' }}
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      TCR_IMAGE: ${{ vars.TCR_IMAGE || 'public/prometheus-kafka-adapter' }}
+      TCR_IMAGE: ${{ vars.TCR_IMAGE || 'yimtune/prometheus-kafka-adapter' }}
     steps:
       - name: Validate registry configuration
         env:
@@ -63,7 +63,7 @@ jobs:
         run: |
           {
             echo 'tags<<EOF'
-            for image in "${TCR_REGISTRY}/${TCR_IMAGE}" "docker.io/${DOCKERHUB_USERNAME}/prometheus-kafka-adapter"; do
+            for image in "${TCR_REGISTRY}/${TCR_IMAGE}" "docker.io/yimtune/prometheus-kafka-adapter"; do
               echo "${image}:sha-${GITHUB_SHA}"
               if [ "$GITHUB_REF_TYPE" = tag ]; then
                 echo "${image}:${GITHUB_REF_NAME}"
