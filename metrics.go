@@ -17,7 +17,7 @@ package main
 import "github.com/prometheus/client_golang/prometheus"
 
 var (
-	httpConnections = newHTTPConnectionMetrics()
+	httpConnections   = newHTTPConnectionMetrics()
 	httpRequestsTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "http_requests_total",
@@ -56,7 +56,13 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(httpConnections.connections)
+	prometheus.MustRegister(
+		httpConnections.connections,
+		httpConnections.opened,
+		httpConnections.closed,
+		httpConnections.lastOpened,
+		httpConnections.lastClosed,
+	)
 	prometheus.MustRegister(httpRequestsTotal)
 	prometheus.MustRegister(promBatches)
 	prometheus.MustRegister(serializeTotal)

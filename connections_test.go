@@ -70,6 +70,7 @@ func TestHTTPConnectionStates(t *testing.T) {
 // Exercise the hook with real TCP requests and keep-alive reuse.
 func TestHTTPConnectionLifecycle(t *testing.T) {
 	m := newHTTPConnectionMetrics()
+	registry := eventRegistry(m)
 	states := make(chan http.ConnState, 16)
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -125,6 +126,7 @@ func TestHTTPConnectionLifecycle(t *testing.T) {
 	}
 	conn.Close()
 	wait(http.StateClosed)
+	checkEvents(t, registry, "127.0.0.1", 1, 1)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if len(m.states) != 0 {
